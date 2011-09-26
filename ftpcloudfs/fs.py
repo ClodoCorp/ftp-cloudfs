@@ -18,6 +18,7 @@ from errors import IOSError
 import posixpath
 from constants import cloudfiles_api_timeout
 from functools import wraps
+from cStringIO import StringIO
 
 __all__ = ['CloudFilesFS']
 
@@ -82,6 +83,7 @@ class CloudFilesFD(object):
         self.mode = mode
         self.closed = False
         self.total_size = 0
+        self.buff = StringIO()
 
         if not all([container, obj]):
             self.closed = True
@@ -93,21 +95,20 @@ class CloudFilesFD(object):
             self.obj = self.container.get_object(self.name)
             logging.debug("read fd obj.name=%r obj.size=%r" % (self.obj.name, self.obj.size))
         else: #write
-            self.obj = ChunkObject(self.container, obj)
+            self.obj = self.container.create_object(obj)
             self.obj.content_type = mimetypes.guess_type(obj)[0]
-            self.obj.prepare_chunk()
 
     def write(self, data):
         '''Write data to the object'''
         if 'r' in self.mode:
             raise IOSError(EPERM, "Can't write to stream opened for read")
-        self.obj.send_chunk(data)
+        self.buff.write(data)
 
     def close(self):
         '''Close the object and finish the data transfer'''
         if 'r' in self.mode:
             return
-        self.obj.finish_chunk()
+        self.obj.write(self.buff.getvalue())
 
     def read(self, size=65536):
         '''Read data from the object'''
